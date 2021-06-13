@@ -5,11 +5,41 @@ import { selectItems, selectTotal } from "../slices/basketSlice";
 import CheckoutProduct from "../components/CheckoutProduct";
 import Currency from "react-currency-formatter";
 import { useSession } from "next-auth/client";
+import { loadStripe } from "@stripe/stripe-js";
+import axios from "axios";
+const stripePromise = loadStripe(process.env.stripe_public_key);
 
 function checkout() {
   const items = useSelector(selectItems);
   const total = useSelector(selectTotal);
   const [session] = useSession();
+
+  const createCheckoutSession = async () => {
+    // Get Stripe.js instance
+    const stripe = await stripePromise;
+
+    let data = JSON.stringify({
+      items: items,
+      email: session.user.email,
+    });
+
+    // Call your backend to create the Checkout Session
+    const checkoutSession = await axios.post(
+      "/api/create-checkout-session",
+      data,
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    // redirect customer to stripe checkout
+    // When the customer clicks on the button, redirect them to Checkout.
+    const result = await stripe.redirectToCheckout({
+      sessionId: checkoutSession.data.id,
+    });
+
+    if (result.error) alert(result.error.message);
+  };
   return (
     <div className="bg-gray-100">
       <Header />
@@ -48,21 +78,23 @@ function checkout() {
         {/* Right */}
         {items.length > 0 && (
           <div className="flex flex-col bg-white p-10 shadow-md">
-              <h2 className="whitespace-nowrap">
-                Subtotal ({items.length} items):
-                <span className="font-bold">
-                  <Currency quantity={total * 100} currency="NGN" />
-                </span>
-              </h2>
-              <button
-                disabled={!session}
-                className={`button mt-2 ${
-                  !session &&
-                  "form-gray-300 to-gray-500 border-gray-200 text-gray-300 cursor-not-allowed"
-                }`}
-              >
-                {!session ? "Sign in to checkout" : "Proceed to checkout"}
-              </button>
+            <h2 className="whitespace-nowrap">
+              Subtotal ({items.length} items):
+              <span className="font-bold">
+                <Currency quantity={total * 100} currency="NGN" />
+              </span>
+            </h2>
+            <button
+              role="link"
+              onClick={createCheckoutSession}
+              disabled={!session}
+              className={`button mt-2 ${
+                !session &&
+                "form-gray-300 to-gray-500 border-gray-200 text-gray-300 cursor-not-allowed"
+              }`}
+            >
+              {!session ? "Sign in to checkout" : "Proceed to checkout"}
+            </button>
           </div>
         )}
       </main>
